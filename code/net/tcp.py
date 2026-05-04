@@ -32,19 +32,20 @@ class TCPSocket:
         self.sock.sendall(length_prefix)
         self.sock.sendall(data)
 
-    def recvx(self) -> bytearray:
+    def recvx(self) -> bytearray | None:
         length_prefix = self._recvall(4)
+        if not length_prefix:
+            return None
+
         to_recv = int.from_bytes(length_prefix, byteorder="big")
 
         return self._recvall(to_recv)
 
-    def _recvall(self, n: int) -> bytearray:
+    def _recvall(self, n: int) -> bytearray | None:
         data = bytearray()
         while len(data) < n:
             packet = self.sock.recv(n - len(data))
             if not packet:
-                raise ConnectionError(
-                    "[tcpsock] connection closed before all data recved"
-                )
+                return None
             data.extend(packet)
         return data
