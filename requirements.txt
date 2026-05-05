@@ -1,2 +1,2 @@
 pyasn1==0.6.3
-rsa==4.9.1
+cryptography>=41.0.0
