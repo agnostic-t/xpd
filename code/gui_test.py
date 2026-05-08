@@ -1,17 +1,16 @@
-from tkinter import Label
-
-import gui.framework as frm
+import gui.client as cli
 
 if __name__ == "__main__":
-    app = frm.GUIApp(geometry=(1000, 900), title="Test")
+    app = cli.GUIClient(geo=(1000, 900))
+    app.build()
 
-    with app.new_container(size=(900, 400), direction="vertical"):
-        app.add_widget(Label(text="Header", font=("Arial", 32, "bold")))
-        app.add_widget(Label(text="Body content"))
+    app.add_contact("Февраль")
+    app.add_contact("Алексей")
+    app.add_contact("Дизайнер")
 
-    with app.new_container(size=(900, 400), direction="horizontal"):
-        app.add_widget(Label(text="Left"))
-        app.add_widget(Label(text="Center"))
-        app.add_widget(Label(text="Right"))
+    app.add_message("Привет, как дела с GUI?", is_outgoing=False)
+    app.add_message("Всё ок, Tkinner поддался.", is_outgoing=True)
+    for i in range(200):
+        app.add_message("Добавил скролл, сообщения и контакты.", is_outgoing=True)
 
     app.run()
