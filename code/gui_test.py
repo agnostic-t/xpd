@@ -1,16 +1,18 @@
 import gui.client as cli
 
 if __name__ == "__main__":
-    app = cli.GUIClient(geo=(1000, 900))
+    app = cli.GUIClient(geo=(700, 900))
     app.build()
 
-    app.add_contact("Февраль")
-    app.add_contact("Алексей")
-    app.add_contact("Дизайнер")
+    app.import_contacts(
+        ["Февраль", "Алексей", "Дизайнер"]
+    )
 
-    app.add_message("Привет, как дела с GUI?", is_outgoing=False)
-    app.add_message("Всё ок, Tkinner поддался.", is_outgoing=True)
+    msgs = [("Привет, как дела с GUI?", False),
+            ("Всё ок, Tkinner поддался.", True)]
     for i in range(200):
-        app.add_message("Добавил скролл, сообщения и контакты.", is_outgoing=True)
+        msgs.append(("Тестовое сообщение", i % 2 == 0))
+
+    app.import_messages("Дизайнер", msgs)
 
     app.run()

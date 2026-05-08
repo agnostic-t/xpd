@@ -1,7 +1,6 @@
 import argparse
 import random
 import time
-from operator import add
 
 from net import address, client, server
 
