@@ -1,7 +1,6 @@
 import math
 import tkinter as tk
 
-
 class ContactCard(tk.Frame):
     def __init__(
         self,
@@ -11,6 +10,7 @@ class ContactCard(tk.Frame):
         initial: str = "?",
         bg_normal="#f8f9fa",
         bg_hover="#e9ecef",
+        bg_online="#8ce26b",
         command=None,
         **kwargs,
     ):
@@ -22,6 +22,10 @@ class ContactCard(tk.Frame):
         self.command = command
         self.name = name
         self.token = token
+
+        self.is_online = False
+        self.bg_online = bg_online
+        self.indicator_id = None
 
         self.bg_canvas = tk.Canvas(self, highlightthickness=0, bd=0)
         self.bg_canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -48,6 +52,18 @@ class ContactCard(tk.Frame):
         self.bind("<Configure>", lambda e: self._draw_bg())
         self._draw_bg()
 
+    def set_status(self, is_online: bool):
+        self.is_online = is_online
+
+        if self.indicator_id:
+            self.avatar.delete(self.indicator_id)
+            self.indicator_id = None
+
+        if self.is_online:
+            self.indicator_id = self.avatar.create_oval(
+                24, 24, 34, 34, fill=self.bg_online, outline="white", width=2
+            )
+
     def _on_click(self, event):
         if self.command:
             self.command(self.token, self.name)
@@ -60,10 +76,9 @@ class ContactCard(tk.Frame):
 
         fill = color if color else self.current_bg
         self.bg_canvas.delete("card_bg")
-        self.bg_canvas.config()
 
         r = 12
-        pts = []
+        pts =[]
         steps = 16
 
         def _arc(cx, cy, start_ang, end_ang):

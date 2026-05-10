@@ -40,20 +40,33 @@ class ScrollableFrame(ttk.Frame):
     def _stick_to_bottom(self):
         self.update_idletasks()
 
-        canvas_h = self.canvas.winfo_height()
         bbox = self.canvas.bbox("all")
 
         if bbox is None:
             return
 
+        self.canvas.coords(self.window_id, 0, 0)
+        self.canvas.yview_moveto(1.0)
+
+    def is_at_bottom(self, tolerance: int = 100) -> bool:
+        self.update_idletasks()
+
+        canvas_h = self.canvas.winfo_height()
+        bbox = self.canvas.bbox("all")
+
+        if bbox is None:
+            return True
+
         content_h = bbox[3]
 
-        if content_h < canvas_h:
-            offset_y = canvas_h - content_h
-            self.canvas.coords(self.window_id, 0, offset_y)
-        else:
-            self.canvas.coords(self.window_id, 0, 0)
-            self.canvas.yview_moveto(1.0)
+        if content_h <= canvas_h:
+            return True
+
+        yview = self.canvas.yview()
+
+        distance_to_bottom = (1.0 - yview[1]) * content_h
+
+        return distance_to_bottom <= tolerance
 
     def _on_frame_resize(self, event):
         sb_w = self.vsb.winfo_width() if self.vsb.winfo_width() > 1 else 16

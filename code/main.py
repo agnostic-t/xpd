@@ -135,6 +135,11 @@ def netthread(ctx: NetContext):
         if ctx.ncli.state == client.ClientStates.REGISTERED:
             if now >= ctx.ncli.next_discovery_time:
                 ctx.ncli.discovery()
+                lt = [t for _, t in ctx.ncli.last_discovery]
+
+                for p in ctx.gui.contacts_exists:
+                    ctx.gui.set_contact_online(token=p, is_online=p in lt)
+
             if now >= ctx.ncli.next_fetch_time:
                 ctx.ncli.fetch_msgs(1)
 
@@ -206,6 +211,7 @@ def netthread(ctx: NetContext):
 def main(ip: str, port: int, database: str, password: str, clean: bool):
     chat_db = chd.ChatDatabase(database)
     if clean:
+        print("[main] cleaning database")
         chat_db.clear(True, True)
 
     storage = ClientStorage(password, str(Path(database) / "keys"))

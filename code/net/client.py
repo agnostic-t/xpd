@@ -38,6 +38,7 @@ class DecClient:
 
         self.ltk: LongTermKey = ltk
         self.server_pubkey: str = ""
+        self.last_discovery: list[tuple[str, int]] = []
 
     def connect(self):
         self.sock.connect()
@@ -200,6 +201,8 @@ class DecClient:
                     for pkey, t in tokens
                     if t != self.token and t not in self.known_peers
                 ]
+
+                self.last_discovery = tokens
 
                 if len(new_peers) > 0:
                     for pkey, t in new_peers:

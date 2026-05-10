@@ -41,6 +41,9 @@ class GUIClient:
         self.contacts_scroll: ScrollableFrame
         self.chat_name: ttk.Label
 
+        self.contacts_exists: set[int] = set()
+        self.cards: dict[int, ContactCard] = {}
+
         self.db = db
         self.upd_dt = upd_dt
         self.current_contact: int = -1
@@ -186,6 +189,8 @@ class GUIClient:
                 command=self._card_click,
             )
             card.pack(fill="x", padx=8, pady=4)
+            self.contacts_exists.add(token)
+            self.cards[token] = card
 
         self.contacts_scroll._on_inner_configure(None)
 
@@ -221,6 +226,10 @@ class GUIClient:
         # self.chat_scroll._stick_to_bottom()
 
     def _add_contact(self, name: str, token: int):
+        if token in self.contacts_exists:
+            return
+
+        self.contacts_exists.add(token)
         card = ContactCard(
             master=self.contacts_scroll.inner,
             token=token,
@@ -231,17 +240,23 @@ class GUIClient:
             command=self._card_click,
         )
         card.pack(fill="x", padx=8, pady=4)
+        self.cards[token] = card
 
         self.contacts_scroll._on_inner_configure(None)
 
+    def set_contact_online(self, token: int, is_online: bool):
+        if token in self.cards:
+            self.cards[token].set_status(is_online)
+
     def _add_message(self, text: str, is_outgoing: bool = False):
+        was_at_bottom = self.chat_scroll.is_at_bottom(tolerance=50)
+
         canvas_w = self.chat_scroll.canvas.winfo_width()
         max_w = max(150, canvas_w - 40) if canvas_w > 40 else 300
 
         bg = "#0084ff" if is_outgoing else "#e5e5ea"
         fg = "#fff" if is_outgoing else "#000"
 
-        # Проверяем, является ли это изображением
         if text.startswith("IMG:"):
             b64_data = text[4:]
             msg_b = MessageBubble(
@@ -262,6 +277,9 @@ class GUIClient:
         msg_data = (self.current_contact, text)
         if is_outgoing:
             self.outbox.put(msg_data)
+
+        if is_outgoing or was_at_bottom:
+            self.chat_scroll._stick_to_bottom()
 
     def _scroll_to_bottom(self):
         self.chat_scroll.canvas.yview_moveto(1.0)
