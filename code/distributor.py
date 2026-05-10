@@ -17,7 +17,7 @@ pip install -r ./requirements.txt
 cd code
 
 echo 'Now you can run:'
-echo 'cd xpd/code && python ./main.py -i $IP -p $PORT -d ./runtime/database'
+echo 'cd xpd && source ./venv/bin/activate && cd code && python ./main.py -i $IP -p $PORT -d ./runtime/database'
 """[1:-1]
 
 @app.route("/")
