@@ -13,7 +13,7 @@ git clone https://github.com/agnostic-t/xpd.git
 cd xpd
 python -m venv venv
 source ./venv/bin/activate
-pip install -r ./requirements
+pip install -r ./requirements.txt
 cd code
 
 echo 'Now you can run:'
