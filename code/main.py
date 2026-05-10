@@ -41,12 +41,12 @@ def netthread(ctx: NetContext):
             if now >= ctx.ncli.next_discovery_time:
                 ctx.ncli.discovery()
             if now >= ctx.ncli.next_fetch_time:
-                ctx.ncli.fetch_msgs()
+                ctx.ncli.fetch_msgs(0.5)
 
         try:
-            pkt = ctx.ncli.wait_message(timeout=1)
-        except KeyboardInterrupt:
-            print("[client] interrupted, exiting...")
+            pkt = ctx.ncli.wait_message(timeout=0)
+        except Exception as ex:
+            print(f"[client] interrupted ({ex}), exiting...")
             ctx.gui.force_exit()
             break
 

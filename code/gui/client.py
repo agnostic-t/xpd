@@ -137,7 +137,9 @@ class GUIClient:
 
     def _handle_incoming_network_msg(self, data: tuple[int, str, int, bool]):
         token, text, timestamp, is_outgoing = data
-        self.db.new_message(token, timestamp, text, is_outgoing)
+        st, msg = self.db.new_message(token, timestamp, text, is_outgoing)
+        if not st:
+            print(f"[HANDLE] failed to reg new msg: {msg}")
 
         if token == self.current_contact:
             self._add_message(text, is_outgoing)

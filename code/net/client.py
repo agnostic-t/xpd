@@ -127,7 +127,7 @@ class DecClient:
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
 
-    def fetch_msgs(self):
+    def fetch_msgs(self, new_dt: float):
         if self.state != ClientStates.REGISTERED:
             print("[client][fetch_msgs] cannot fetch messages, not registered")
             return
@@ -137,7 +137,7 @@ class DecClient:
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
 
-        self.next_fetch_time = time.time() + 2
+        self.next_fetch_time = time.time() + new_dt
 
     def suggest(self, serv_addr: address.NetAddress) -> None:
         if self.state == ClientStates.NOT_CONNECTED:
