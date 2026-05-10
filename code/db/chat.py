@@ -30,11 +30,11 @@ class ChatDatabase:
         self.db_messages.set(token, msgs)
         return True, "Ok"
 
-    def new_contact(self, name: str, token: int):
+    def new_contact(self, name: str, pubkey: str, token: int):
         if self.db_contacts.get(token) is not None:
             return False, "Failed to register new contact, already exists"
 
-        self.db_contacts.set(token, name)
+        self.db_contacts.set(token, (name, pubkey))
         self.db_messages.set(token, {"messages": []})
 
         return True, "Ok"
@@ -46,8 +46,17 @@ class ChatDatabase:
 
         return msgs["messages"]
 
+    def get_pubkey(self, token: int) -> None | str:
+        contact = self.db_contacts.get(token)
+        if not contact:
+            return None
+
+        return contact[1]
+
     def get_contacts(self) -> list[tuple[int, str]]:
-        return [(t, self.db_contacts.get(t) or "") for t in self.db_contacts.all()]
+        return [
+            (t, (self.db_contacts.get(t) or (""))[0]) for t in self.db_contacts.all()
+        ]
 
     def check_contact(self, token: int) -> bool:
         return self.db_contacts.get(token) is not None

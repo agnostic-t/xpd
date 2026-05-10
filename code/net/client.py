@@ -1,8 +1,9 @@
 import json
 import time
-from dataclasses import dataclass
 from enum import Enum
 from select import select
+
+from crypto.lterm import LongTermKey
 
 import net.address as address
 import net.packets as pck
@@ -17,7 +18,7 @@ class ClientStates(Enum):
 
 
 class DecClient:
-    def __init__(self, serv_addr: address.NetAddress) -> None:
+    def __init__(self, serv_addr: address.NetAddress, ltk: LongTermKey) -> None:
         self.addr = serv_addr
         self.sock = tcp.TCPSocket(self.addr)
         self.token: int = 0
@@ -32,6 +33,10 @@ class DecClient:
         self._pending_peers: set[int] = set()
 
         self.known_peers: set[int] = set()
+        self.known_pubkeys: dict[int, str] = {}
+
+        self.ltk: LongTermKey = ltk
+        self.server_pubkey: str = ""
 
     def connect(self):
         self.sock.connect()
@@ -47,10 +52,9 @@ class DecClient:
     def wait_message(self, timeout: int) -> pck.Packet | None:
         if self.state == ClientStates.NOT_CONNECTED:
             print("[client][wait_msg] cannot wait messages, not connected")
-            return
+            return None
 
         mon_socks = [self.sock.sock]
-
         readable, _, with_errs = select(mon_socks, [], mon_socks, timeout)
 
         if readable:
@@ -93,8 +97,12 @@ class DecClient:
         self.token = token
 
         pack = pck.Packet(
-            from_token=self.token, to_token=0, text="", metadata="REGISTER"
+            from_token=self.token,
+            to_token=0,
+            text=self.ltk.export_public_base64(),
+            metadata="REGISTER",
         )
+        pack.sign(self.ltk.export_private_hazmat())
 
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
@@ -109,6 +117,7 @@ class DecClient:
         pack = pck.Packet(
             from_token=self.token, to_token=0, text="", metadata="DISCOVERY"
         )
+        pack.sign(self.ltk.export_private_hazmat())
 
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
@@ -123,6 +132,7 @@ class DecClient:
         pack = pck.Packet(
             from_token=self.token, to_token=peer_token, text=msg, metadata="MESSAGE"
         )
+        pack.sign(self.ltk.export_private_hazmat())
 
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
@@ -133,6 +143,7 @@ class DecClient:
             return
 
         pack = pck.Packet(from_token=self.token, to_token=0, text="", metadata="FETCH")
+        pack.sign(self.ltk.export_private_hazmat())
 
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
@@ -150,14 +161,29 @@ class DecClient:
         pack = pck.Packet(
             from_token=self.token, to_token=0, text=json_data, metadata="SUGGEST"
         )
+        pack.sign(self.ltk.export_private_hazmat())
 
         jsoned = json.dumps(pack.serial(), ensure_ascii=False)
         self._send(jsoned)
 
     def process_msg(self, msg: pck.Packet):
         if self.state == ClientStates.NOT_CONNECTED:
-            print("[client][process_msg] cannot start discovery, not registered")
+            print("[client][process_msg] cannot process msg, not connected")
             return
+
+        if msg.metadata == "SERVER_REG_SUCCESS":
+            temp_pubkey = msg.text
+            if not msg.verify(temp_pubkey):
+                print("[process][fatal] Failed to verify SERVER_REG_SUCCESS signature!")
+                self.running = False
+                return
+            self.server_pubkey = temp_pubkey
+
+        elif msg.metadata != "SERVER_REG_FAILURE":
+            if not msg.verify(self.server_pubkey):
+                print("[process][fatal] Invalid signature from server!")
+                self.running = False
+                return
 
         match msg.metadata:
             case "SERVER_REG_FAILURE":
@@ -167,58 +193,57 @@ class DecClient:
                     self.running = False
                 else:
                     print(
-                        f"[process] warning: something happened with server, wrong metadata code received ({msg.metadata})"
+                        f"[process] warning: wrong metadata code received ({msg.metadata})"
                     )
+
             case "SERVER_REG_SUCCESS":
                 if self.state == ClientStates.WAITING_REG_ANS:
-                    print(f"[process] successfully registered: {msg.text}")
+                    print(
+                        f"[process] successfully registered, server pubkey: {msg.text}"
+                    )
                     self.state = ClientStates.REGISTERED
                 else:
                     print(
-                        f"[process] warning: something happened with server, wrong metadata code received ({msg.metadata})"
+                        f"[process] warning: wrong metadata code received ({msg.metadata})"
                     )
 
             case "SERVER_DISCOVERY_ANS":
                 if self.state != ClientStates.REGISTERED:
-                    print(
-                        f"[process] warning: something happened with server, wrong metadata code received ({msg.metadata})"
-                    )
                     return
 
-                data = msg.text
                 try:
-                    json_data = json.loads(data)
+                    json_data = json.loads(msg.text)
                 except Exception as ex:
                     print(
                         f"[process] failed to process JSON data in SERVER_DISCOVERY_ANS: {ex}"
                     )
                     return
 
-                tokens = json_data["tokens"]
-                tokens = [
-                    t for t in tokens if t != self.token and t not in self.known_peers
-                ]
+                tokens = json_data["tokens"]  # [[pubkey, t], ...]
 
-                if len(tokens) == 0:
-                    # print("[process][discovery] no new aquired peers from discovery")
+                new_peers = [
+                    [pkey, t]
+                    for pkey, t in tokens
+                    if t != self.token and t not in self.known_peers
+                ]
+                if len(new_peers) == 0:
                     return
 
                 print(
-                    f"[process][discovery] new peers: {len(tokens)}, db size: {len(self.known_peers) + len(tokens)}"
+                    f"[process][discovery] new peers: {len(new_peers)}, db size: {len(self.known_peers) + len(new_peers)}"
                 )
-                self.known_peers.update(tokens)
-                self._pending_peers.update(tokens)
+
+                for pkey, t in new_peers:
+                    self.known_pubkeys[t] = pkey
+                    self.known_peers.add(t)
+                    self._pending_peers.add(t)
 
             case "SERVER_FORWARDED_MSG":
                 if self.state != ClientStates.REGISTERED:
-                    print(
-                        f"[process] warning: something happened with server, wrong metadata code received ({msg.metadata})"
-                    )
                     return
 
-                data = msg.text
                 try:
-                    json_data = json.loads(data)
+                    json_data = json.loads(msg.text)
                 except Exception as ex:
                     print(
                         f"[process][fwd_msg] failed to get proper JSON from data from server: {ex}"
@@ -228,9 +253,16 @@ class DecClient:
                 msgs: list[dict] = json_data["msgs"]
                 for _msg in msgs:
                     fwd_pack = pck.Packet.deserial(_msg)
+
                     if fwd_pack.from_token not in self.known_peers:
                         print(
                             f"[process][fwd_msg] dropping packet from unknown peer: {fwd_pack.from_token}"
+                        )
+                        continue
+
+                    if not fwd_pack.verify(self.known_pubkeys[fwd_pack.from_token]):
+                        print(
+                            f"[process][fwd_msg] failed to verify msg from {fwd_pack.from_token}, PK: {self.known_pubkeys[fwd_pack.from_token]}"
                         )
                         continue
 

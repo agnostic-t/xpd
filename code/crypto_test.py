@@ -1,15 +1,6 @@
-from crypto.rsa import RSACrypto
+from crypto.api import ClientStorage, EncryptedChannel, LongTermKey
 
-crypto = RSACrypto(key_size=4096)
+if __name__ == "__main__":
+    storage = ClientStorage(key_dir="./runtime/keys/test", password="qw9010Kiwipa44")
 
-keys = crypto.gen_keys()
-crypto.save_keys("keys.json", keys)
-
-crypto.load_keys("keys.json")
-print(crypto.get_max_len() * "a")
-
-encrypted = crypto.encrypt("Secret message!")
-decrypted = crypto.decrypt(encrypted)
-
-signature = crypto.sign("Important document")
-is_valid = crypto.verify("Important document", signature)
+    print(storage.gen_uid())

@@ -127,7 +127,7 @@ class GUIClient:
                 if mtype == "peer":
                     name = sha256(f"{msg_data}".encode()).hexdigest()[2:7]
                     self._add_contact(name, msg_data)
-                    self.db.new_contact(name, msg_data)
+                    self.db.new_contact(name, msg_data[0], msg_data[1])
 
             except queue.Empty:
                 break
@@ -149,6 +149,8 @@ class GUIClient:
 
     def _card_click(self, token: int, name: str):
         self.current_contact = token
+
+        print(self.db.get_messages_from(token))
         self._import_messages(name, self.db.get_messages_from(token) or [])
 
     def _import_contacts(self, contacts: list[tuple[int, str]]):

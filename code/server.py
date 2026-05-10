@@ -1,10 +1,12 @@
 import argparse
 
+from crypto.api import ClientStorage
 from net import address, server
 
 
 def main(ip: str, port: int):
-    serv = server.DecServer(address.NetAddress(ip, port))
+    storage = ClientStorage(key_dir="./runtime/keys/server", password="1234")
+    serv = server.DecServer(address.NetAddress(ip, port), storage.ltk)
     serv.start()
     try:
         serv.loop()
