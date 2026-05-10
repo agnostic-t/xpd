@@ -1,4 +1,5 @@
 import argparse
+from hashlib import sha256
 import json
 import os
 import queue
@@ -202,9 +203,10 @@ def netthread(ctx: NetContext):
     ctx.ncli.stop()
 
 
-def main(ip: str, port: int, database: str, password: str):
+def main(ip: str, port: int, database: str, password: str, clean: bool):
     chat_db = chd.ChatDatabase(database)
-    chat_db.clear(True, True)
+    if clean:
+        chat_db.clear(True, True)
 
     storage = ClientStorage(password, str(Path(database) / "keys"))
 
@@ -220,6 +222,8 @@ def main(ip: str, port: int, database: str, password: str):
         storage=storage,
         chans=ChanStorage(storage, self_token=storage.gen_uid()),
     )
+
+    print("[main] self name:", sha256(f"{storage.gen_uid()}".encode()).hexdigest()[2:7])
 
     nthr = threading.Thread(target=netthread, args=(ctx,), daemon=True)
     nthr.start()
@@ -245,7 +249,11 @@ if __name__ == "__main__":
         default=".databases",
     )
 
+    parser.add_argument(
+        "-c", "--clean", action="store_true", help="Start with clean chat databases"
+    )
+
     args = parser.parse_args()
 
     os.makedirs(args.database, exist_ok=True)
-    main(args.ip, args.port, args.database, "12345")
+    main(args.ip, args.port, args.database, "12345", args.clean)
