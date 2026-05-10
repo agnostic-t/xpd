@@ -1,83 +1,120 @@
 import argparse
+import os
+import queue
 import random
+import threading
 import time
+from dataclasses import dataclass
+from re import L
 
-from net import address, client, server
+import db.chat as chd
+import gui.client as cli
+from net import address, client
 
 
-def server_main(ip: str, port: int):
-    serv = server.DecServer(address.NetAddress(ip, port))
-    serv.start()
+@dataclass
+class NetContext:
+    is_running: threading.Event
+    inbox: queue.Queue
+    outbox: queue.Queue
+    gui: cli.GUIClient
+    ncli: client.DecClient
+
+
+def netthread(ctx: NetContext):
     try:
-        serv.loop()
-    except KeyboardInterrupt:
-        print("[serv] interrupted, exiting")
-
-    serv.end()
-
-
-def client_main(ip: str, port: int):
-    cli = client.DecClient(address.NetAddress(ip, port))
-    try:
-        cli.connect()
-        print(f"[client] connected to {str(cli.addr)}")
+        ctx.ncli.connect()
+        print(f"[client] connected to {str(ctx.ncli.addr)}")
     except Exception as ex:
         print(f"[client] failed to connect: {ex}")
+        ctx.gui.force_exit()
         return
 
     token = random.randint(0, 100000000000)
     print(f"[client] self token: {token}")
 
-    cli.register(token)
+    ctx.ncli.register(token)
 
-    i = 0
-    suggested = False
-    while cli.can_run():
-        if cli.state == client.ClientStates.REGISTERED and not suggested:
-            cli.suggest(address.NetAddress(ip, 9001 if port == 9000 else 9000))
-            suggested = True
-
-        if time.time() >= cli.next_discovery_time:
-            cli.discovery()
-
-        if time.time() >= cli.next_fetch_time:
-            cli.fetch_msgs()
+    while ctx.ncli.can_run():
+        now = time.time()
+        if ctx.ncli.state == client.ClientStates.REGISTERED:
+            if now >= ctx.ncli.next_discovery_time:
+                ctx.ncli.discovery()
+            if now >= ctx.ncli.next_fetch_time:
+                ctx.ncli.fetch_msgs()
 
         try:
-            msg = cli.wait_message(1)  # 1 second
-            if not msg:
-                continue
+            pkt = ctx.ncli.wait_message(timeout=1)
         except KeyboardInterrupt:
             print("[client] interrupted, exiting...")
+            ctx.gui.force_exit()
             break
 
-        cli.process_msg(msg)
+        if pkt:
+            ctx.ncli.process_msg(pkt)
 
-        if len(cli.known_peers) > 0:
-            peer = random.choice(cli.known_peers)
-            cli.message(peer, f"Hello from {cli.token} ({i})")
-            i += 1
+        if ctx.ncli.has_new_messages():
+            msgs: dict[int, list[str]] = ctx.ncli.get_new_messages()
+            for t, txts in msgs.items():
+                for txt in txts:
+                    ctx.inbox.put(("msg", (t, txt, int(time.time()), False)))
 
-    cli.stop()
+        if ctx.ncli.has_new_peers():
+            peers: list[int] = ctx.ncli.get_new_peers()
+            for p in peers:
+                ctx.inbox.put(("peer", p))
+
+        while not ctx.outbox.empty():
+            print("[main] got new msg from GUI")
+            tkn, msg = ctx.outbox.get_nowait()
+            ctx.ncli.message(tkn, msg)
+
+    ctx.ncli.stop()
 
 
-def main(type: str, ip: str, port: int):
-    if type == "server":
-        server_main(ip, port)
+def main(ip: str, port: int, database: str):
+    chat_db = chd.ChatDatabase(database)
+    chat_db.clear(True, True)
 
-    if type == "client":
-        client_main(ip, port)
+    app = cli.GUIClient(chat_db)
+    ncli = client.DecClient(address.NetAddress(ip, port))
+
+    ctx = NetContext(
+        gui=app,
+        inbox=app.inbox,
+        outbox=app.outbox,
+        is_running=app.running,
+        ncli=ncli,
+    )
+
+    nthr = threading.Thread(target=netthread, args=(ctx,))
+    nthr.start()
+
+    app.build()
+    app.import_from_db()
+
+    app.run()
+
+    ncli.stop()
+    nthr.join()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-t", "--type", help="Type of program, server or client", required=True
-    )
+    parser = argparse.ArgumentParser(description="GUI+NET Client for decmsg")
+
     parser.add_argument("-i", "--ip", help="IP address to bind/connect", required=True)
     parser.add_argument(
         "-p", "--port", type=int, help="PORT to bind/connect", required=True
     )
+    parser.add_argument(
+        "-d",
+        "--database",
+        type=str,
+        help="Path to directory to store message/contact databases",
+        default=".databases",
+    )
 
     args = parser.parse_args()
-    main(args.type, args.ip, args.port)
+
+    os.makedirs(args.database, exist_ok=True)
+    main(args.ip, args.port, args.database)

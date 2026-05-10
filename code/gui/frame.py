@@ -1,19 +1,29 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
+
 class ScrollableFrame(ttk.Frame):
-    def __init__(self, master=None, max_width: int | None = None, min_width: int = 10, adt_on_resize = None, **kwargs):
+    def __init__(
+        self,
+        master=None,
+        max_width: int | None = None,
+        min_width: int = 10,
+        adt_on_resize=None,
+        **kwargs,
+    ):
         super().__init__(master, **kwargs)
         self.max_width = max_width
         self.min_width = min_width
 
         self.canvas = tk.Canvas(self, highlightthickness=0, bd=0, width=1)
         self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.inner = ttk.Frame(self.canvas)
+        self.inner = ttk.Frame(self.canvas, relief="flat")
         self.adt_on_resize = adt_on_resize
 
         self.canvas.configure(yscrollcommand=self.vsb.set)
-        self.window_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
+        self.window_id = self.canvas.create_window(
+            (0, 0), window=self.inner, anchor="nw"
+        )
 
         self.canvas.pack(side="left", fill="both")
         self.vsb.pack(side="right", fill="y")
@@ -33,12 +43,13 @@ class ScrollableFrame(ttk.Frame):
         canvas_h = self.canvas.winfo_height()
         bbox = self.canvas.bbox("all")
 
-        if bbox is None: return
+        if bbox is None:
+            return
 
         content_h = bbox[3]
 
         if content_h < canvas_h:
-            offset_y = (canvas_h - content_h)
+            offset_y = canvas_h - content_h
             self.canvas.coords(self.window_id, 0, offset_y)
         else:
             self.canvas.coords(self.window_id, 0, 0)

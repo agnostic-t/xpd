@@ -24,12 +24,14 @@ class DecClient:
         self.running: bool = False
         self.state: ClientStates = ClientStates.NOT_CONNECTED
 
-        self.known_peers: list[int] = []
-
         self.next_discovery_time = 0
         self.next_fetch_time = 0
         self.messages: dict[int, list[str]] = {}
-        self.last_from_tokens: list[int] = []
+
+        self._pending_messages: dict[int, list[str]] = {}
+        self._pending_peers: set[int] = set()
+
+        self.known_peers: set[int] = set()
 
     def connect(self):
         self.sock.connect()
@@ -204,9 +206,8 @@ class DecClient:
                 print(
                     f"[process][discovery] new peers: {len(tokens)}, db size: {len(self.known_peers) + len(tokens)}"
                 )
-                self.known_peers += tokens
-                # if len(tokens) > 0:
-                #     self.has_new_peers = True
+                self.known_peers.update(tokens)
+                self._pending_peers.update(tokens)
 
             case "SERVER_FORWARDED_MSG":
                 if self.state != ClientStates.REGISTERED:
@@ -231,16 +232,33 @@ class DecClient:
                         print(
                             f"[process][fwd_msg] dropping packet from unknown peer: {fwd_pack.from_token}"
                         )
-                        return
+                        continue
 
-                    if fwd_pack.from_token not in self.messages:
-                        self.messages[fwd_pack.from_token] = []
-
-                    self.messages[fwd_pack.from_token].append(fwd_pack.text)
+                    self.messages.setdefault(fwd_pack.from_token, []).append(
+                        fwd_pack.text
+                    )
+                    self._pending_messages.setdefault(fwd_pack.from_token, []).append(
+                        fwd_pack.text
+                    )
                     print(
                         f"[process][fwd_msg] got new packet from {fwd_pack.from_token}: {fwd_pack.text}"
                     )
-                    self.last_from_tokens.append(fwd_pack.from_token)
+
+    def get_new_messages(self) -> dict[int, list[str]]:
+        result = dict(self._pending_messages)
+        self._pending_messages.clear()
+        return result
+
+    def get_new_peers(self) -> list[int]:
+        result = list(self._pending_peers)
+        self._pending_peers.clear()
+        return result
+
+    def has_new_peers(self) -> bool:
+        return bool(self._pending_peers)
+
+    def has_new_messages(self) -> bool:
+        return bool(self._pending_messages)
 
     def _send(self, data: str) -> None:
         self.sock.sendx(data.encode())
