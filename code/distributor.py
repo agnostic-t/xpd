@@ -17,7 +17,7 @@ pip install -r ./requirements.txt
 cd code
 
 echo 'Now you can run:'
-echo 'python ./client.py -i $IP -p $PORT ./runtime/database'
+echo 'cd xpd/code && python ./client.py -i $IP -p $PORT ./runtime/database'
 """[1:-1]
 
 @app.route("/")
