@@ -4,7 +4,6 @@ from enum import Enum
 from select import select
 
 from crypto.lterm import LongTermKey
-
 import net.address as address
 import net.packets as pck
 import net.tcp as tcp
@@ -35,6 +34,8 @@ class DecClient:
         self.known_peers: set[int] = set()
         self.known_pubkeys: dict[int, str] = {}
 
+        self._unverified_backlog: list[pck.Packet] =[]
+
         self.ltk: LongTermKey = ltk
         self.server_pubkey: str = ""
 
@@ -49,19 +50,17 @@ class DecClient:
     def can_run(self) -> bool:
         return self.running
 
-    def wait_message(self, timeout: int) -> pck.Packet | None:
+    def wait_message(self, timeout: float) -> pck.Packet | None:
         if self.state == ClientStates.NOT_CONNECTED:
-            print("[client][wait_msg] cannot wait messages, not connected")
             return None
 
         mon_socks = [self.sock.sock]
-        readable, _, with_errs = select(mon_socks, [], mon_socks, timeout)
+        readable, _, with_errs = select(mon_socks,[], mon_socks, timeout)
 
         if readable:
             try:
                 str_data = self._recv()
             except Exception as ex:
-                print(f"[wait_msgs] something happened with connection: {ex}")
                 self.running = False
                 self.state = ClientStates.NOT_CONNECTED
                 return None
@@ -74,7 +73,6 @@ class DecClient:
             try:
                 json_data = json.loads(str_data)
             except Exception as ex:
-                print(f"[wait_msgs] failed get json data: {ex}")
                 self.running = False
                 self.state = ClientStates.NOT_CONNECTED
                 return None
@@ -82,7 +80,6 @@ class DecClient:
             return pck.Packet.deserial(json_data)
 
         if with_errs:
-            print("[wait_msgs] something happened with connection: POLLHUP/POLLERR")
             self.running = False
             self.state = ClientStates.NOT_CONNECTED
             return None
@@ -91,11 +88,9 @@ class DecClient:
 
     def register(self, token: int) -> None:
         if self.state != ClientStates.CONNECTED:
-            print("[client][register] cannot start registration, not connected")
             return
 
         self.token = token
-
         pack = pck.Packet(
             from_token=self.token,
             to_token=0,
@@ -111,7 +106,6 @@ class DecClient:
 
     def discovery(self) -> None:
         if self.state != ClientStates.REGISTERED:
-            print("[client][discovery] cannot start discovery, not registered")
             return
 
         pack = pck.Packet(
@@ -126,7 +120,6 @@ class DecClient:
 
     def message(self, peer_token: int, msg: str) -> None:
         if self.state != ClientStates.REGISTERED:
-            print("[client][message] cannot send message, not registered")
             return
 
         pack = pck.Packet(
@@ -139,7 +132,6 @@ class DecClient:
 
     def fetch_msgs(self, new_dt: float):
         if self.state != ClientStates.REGISTERED:
-            print("[client][fetch_msgs] cannot fetch messages, not registered")
             return
 
         pack = pck.Packet(from_token=self.token, to_token=0, text="", metadata="FETCH")
@@ -152,7 +144,6 @@ class DecClient:
 
     def suggest(self, serv_addr: address.NetAddress) -> None:
         if self.state == ClientStates.NOT_CONNECTED:
-            print("[client][suggest] cannot suggest server, not connected")
             return
 
         json_data = json.dumps(
@@ -168,7 +159,6 @@ class DecClient:
 
     def process_msg(self, msg: pck.Packet):
         if self.state == ClientStates.NOT_CONNECTED:
-            print("[client][process_msg] cannot process msg, not connected")
             return
 
         if msg.metadata == "SERVER_REG_SUCCESS":
@@ -188,24 +178,12 @@ class DecClient:
         match msg.metadata:
             case "SERVER_REG_FAILURE":
                 if self.state == ClientStates.WAITING_REG_ANS:
-                    print(f"[process] failed to register: {msg.text}")
                     self.state = ClientStates.NOT_CONNECTED
                     self.running = False
-                else:
-                    print(
-                        f"[process] warning: wrong metadata code received ({msg.metadata})"
-                    )
 
             case "SERVER_REG_SUCCESS":
                 if self.state == ClientStates.WAITING_REG_ANS:
-                    print(
-                        f"[process] successfully registered, server pubkey: {msg.text}"
-                    )
                     self.state = ClientStates.REGISTERED
-                else:
-                    print(
-                        f"[process] warning: wrong metadata code received ({msg.metadata})"
-                    )
 
             case "SERVER_DISCOVERY_ANS":
                 if self.state != ClientStates.REGISTERED:
@@ -213,30 +191,38 @@ class DecClient:
 
                 try:
                     json_data = json.loads(msg.text)
-                except Exception as ex:
-                    print(
-                        f"[process] failed to process JSON data in SERVER_DISCOVERY_ANS: {ex}"
-                    )
+                except Exception:
                     return
 
-                tokens = json_data["tokens"]  # [[pubkey, t], ...]
+                tokens = json_data["tokens"]
 
-                new_peers = [
-                    [pkey, t]
+                new_peers = [[pkey, t]
                     for pkey, t in tokens
                     if t != self.token and t not in self.known_peers
                 ]
-                if len(new_peers) == 0:
-                    return
 
-                print(
-                    f"[process][discovery] new peers: {len(new_peers)}, db size: {len(self.known_peers) + len(new_peers)}"
-                )
+                if len(new_peers) > 0:
+                    for pkey, t in new_peers:
+                        self.known_pubkeys[t] = pkey
+                        self.known_peers.add(t)
+                        self._pending_peers.add(t)
 
-                for pkey, t in new_peers:
-                    self.known_pubkeys[t] = pkey
-                    self.known_peers.add(t)
-                    self._pending_peers.add(t)
+                if self._unverified_backlog:
+                    to_process = self._unverified_backlog[:]
+                    self._unverified_backlog.clear()
+
+                    for back_pack in to_process:
+                        if back_pack.from_token in self.known_peers:
+                            if not back_pack.verify(self.known_pubkeys[back_pack.from_token]):
+                                print(f"[process][backlog] failed to verify backlogged msg from {back_pack.from_token}")
+                                continue
+
+                            self.messages.setdefault(back_pack.from_token,[]).append(back_pack.text)
+                            self._pending_messages.setdefault(back_pack.from_token,[]).append(back_pack.text)
+                            print(f"[process][backlog] successfully processed backlogged packet from {back_pack.from_token}")
+                        else:
+                            if len(self._unverified_backlog) < 50:
+                                self._unverified_backlog.append(back_pack)
 
             case "SERVER_FORWARDED_MSG":
                 if self.state != ClientStates.REGISTERED:
@@ -244,10 +230,7 @@ class DecClient:
 
                 try:
                     json_data = json.loads(msg.text)
-                except Exception as ex:
-                    print(
-                        f"[process][fwd_msg] failed to get proper JSON from data from server: {ex}"
-                    )
+                except Exception:
                     return
 
                 msgs: list[dict] = json_data["msgs"]
@@ -255,26 +238,20 @@ class DecClient:
                     fwd_pack = pck.Packet.deserial(_msg)
 
                     if fwd_pack.from_token not in self.known_peers:
-                        print(
-                            f"[process][fwd_msg] dropping packet from unknown peer: {fwd_pack.from_token}"
-                        )
+                        print(f"[process][fwd_msg] unknown peer {fwd_pack.from_token}, queueing & forcing discovery")
+
+                        if len(self._unverified_backlog) < 50:
+                            self._unverified_backlog.append(fwd_pack)
+
+                        self.next_discovery_time = 0
                         continue
 
                     if not fwd_pack.verify(self.known_pubkeys[fwd_pack.from_token]):
-                        print(
-                            f"[process][fwd_msg] failed to verify msg from {fwd_pack.from_token}, PK: {self.known_pubkeys[fwd_pack.from_token]}"
-                        )
+                        print(f"[process][fwd_msg] failed to verify msg from {fwd_pack.from_token}")
                         continue
 
-                    self.messages.setdefault(fwd_pack.from_token, []).append(
-                        fwd_pack.text
-                    )
-                    self._pending_messages.setdefault(fwd_pack.from_token, []).append(
-                        fwd_pack.text
-                    )
-                    print(
-                        f"[process][fwd_msg] got new packet from {fwd_pack.from_token}: {fwd_pack.text}"
-                    )
+                    self.messages.setdefault(fwd_pack.from_token,[]).append(fwd_pack.text)
+                    self._pending_messages.setdefault(fwd_pack.from_token,[]).append(fwd_pack.text)
 
     def get_new_messages(self) -> dict[int, list[str]]:
         result = dict(self._pending_messages)
