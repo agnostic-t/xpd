@@ -146,7 +146,7 @@ class GUIClient:
                 if mtype == "msg":
                     self._handle_incoming_network_msg(msg_data)
                 if mtype == "peer":
-                    name = sha256(f"{msg_data[1]}".encode()).hexdigest()[2:7]
+                    name = sha256(f"{msg_data[1]}".encode()).hexdigest()[2:9]
                     self._add_contact(name, msg_data[1])
                     self.db.new_contact(name, msg_data[0], msg_data[1])
 

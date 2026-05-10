@@ -229,7 +229,7 @@ def main(ip: str, port: int, database: str, password: str, clean: bool):
         chans=ChanStorage(storage, self_token=storage.gen_uid()),
     )
 
-    print("[main] self name:", sha256(f"{storage.gen_uid()}".encode()).hexdigest()[2:7])
+    print("[main] self name:", sha256(f"{storage.gen_uid()}".encode()).hexdigest()[2:9])
 
     nthr = threading.Thread(target=netthread, args=(ctx,), daemon=True)
     nthr.start()
