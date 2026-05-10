@@ -1,5 +1,4 @@
 import base64
-import secrets
 from typing import Optional, Union
 
 from cryptography.exceptions import InvalidTag
@@ -32,10 +31,7 @@ class SecureChannel:
         self._our_ephemeral: Optional[bytes] = None
         self._nonce_counter = 0
 
-    # ================= INITIATOR SIDE =================
-
     def initiate_handshake(self) -> dict:
-        """Step 1: Generate ephemeral keys, prepare first message."""
         self._our_ephemeral = self._x25519.generate_ephemeral_keys()
         return {
             "ephemeral_x25519": base64.b64encode(self._our_ephemeral).decode(),
@@ -45,25 +41,25 @@ class SecureChannel:
         }
 
     def finalize_handshake(self, resp_msg: dict) -> bool:
-        """Step 3: Verify responder's signature, complete channel setup."""
+        if not self._our_ephemeral:
+            raise RuntimeError("Cannot finalize handshake `our_ephemeral` is None")
+
         peer_eph = base64.b64decode(resp_msg["ephemeral_x25519"])
         peer_id = base64.b64decode(resp_msg["identity_ed25519"])
         sig = base64.b64decode(resp_msg["signature"])
 
         self._check_peer_identity(peer_id)
 
-        # Deterministic key derivation (same inputs → same AES key on both sides)
         result = self._x25519.complete_exchange(
             peer_eph, salt=self._our_ephemeral + peer_eph
         )
         self._aesgcm = AESGCM(result.session_keys.encryption_key)
         self._session_keys = result.session_keys
 
-        # Verify signature: responder signed (their_eph || our_eph)
         if not self._identity.verify_exchange(
             signer_pub=peer_id,
-            our_ephemeral=peer_eph,  # from responder's perspective: "our"
-            peer_ephemeral=self._our_ephemeral,  # "peer" = us
+            our_eph=peer_eph,
+            peer_eph=self._our_ephemeral,
             signature=sig,
         ):
             raise CryptoError("Responder signature verification failed")
@@ -71,10 +67,8 @@ class SecureChannel:
         self._nonce_counter = 0
         return True
 
-    # ================= RESPONDER SIDE =================
 
     def accept_handshake(self, init_msg: dict) -> dict:
-        """Step 2: Process initiator message, compute shared secret, sign & respond."""
         peer_eph = base64.b64decode(init_msg["ephemeral_x25519"])
         peer_id = base64.b64decode(init_msg["identity_ed25519"])
 
@@ -82,14 +76,12 @@ class SecureChannel:
 
         self._our_ephemeral = self._x25519.generate_ephemeral_keys()
 
-        # Derive keys (same salt as initiator will use)
         result = self._x25519.complete_exchange(
-            peer_eph, salt=self._our_ephemeral + peer_eph
+            peer_eph, salt=peer_eph + self._our_ephemeral
         )
         self._aesgcm = AESGCM(result.session_keys.encryption_key)
         self._session_keys = result.session_keys
 
-        # Sign transcript: context + our_eph + peer_eph
         sig = self._identity.sign_exchange(self._our_ephemeral, peer_eph)
         self._nonce_counter = 0
 
@@ -100,8 +92,6 @@ class SecureChannel:
             ).decode(),
             "signature": base64.b64encode(sig).decode(),
         }
-
-    # ================= SHARED LOGIC =================
 
     def _check_peer_identity(self, received_id: bytes) -> None:
         if self._known_peer_id and received_id != self._known_peer_id:
@@ -117,6 +107,9 @@ class SecureChannel:
             raise CryptoError("Handshake not completed")
         if isinstance(plaintext, str):
             plaintext = plaintext.encode("utf-8")
+
+        if self._session_keys is None:
+            raise RuntimeError("Session keys cannot be None during encryption")
 
         nonce = self._session_keys.derive_nonce(self._nonce_counter)
         self._nonce_counter += 1

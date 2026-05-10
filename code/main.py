@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import queue
-import random  # Добавлено для генерации токена, если в storage нет gen_uid
 import threading
 import time
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ class ChanState(Enum):
 @dataclass
 class ChanContext:
     state: ChanState
-    side: int  # 0 - Инициатор, 1 - Ответчик
+    side: int
 
 
 class ChanStorage:
@@ -39,25 +38,22 @@ class ChanStorage:
 
     def new_peer(self, token: int, peer_pubkey_b64: str, ncli: client.DecClient):
         if token in self.states:
-            return  # Уже знаем этого пира
+            return
 
-        # Инициализируем защищенный канал, передаем сырые байты публичного ключа пира
         peer_pub_raw = LongTermKey.from_base64(
             peer_pubkey_b64, False
         ).export_public_raw()
         self.chans[token] = EncryptedChannel(self.storage, known_peer_id=peer_pub_raw)
 
-        # Выбираем, кто первый начинает хендшейк (у кого ID больше)
         is_initiator = self.self_token > token
         self.states[token] = ChanContext(
             state=ChanState.NOT_HANDSHAKED, side=0 if is_initiator else 1
         )
 
         if is_initiator:
-            print(f"[hsh] starting handshake with {token} (I am initiator)")
+            print(f"[hsh] starting handshake with {token} (as initiator)")
             hs_msg = self.chans[token].hsh_start()
             self.states[token].state = ChanState.AWAITING_FINAL
-            # Отправляем служебное сообщение инициализации
             ncli.message(token, json.dumps({"type": "hs_init", "data": hs_msg}))
 
     def process_hs_msg(self, token: int, msg_dict: dict, ncli: client.DecClient):
@@ -70,7 +66,6 @@ class ChanStorage:
         msg_type = msg_dict.get("type")
         msg_data = msg_dict.get("data")
 
-        # Ответчик получает инициирующее сообщение
         if (
             msg_type == "hs_init"
             and ctx.side == 1
@@ -80,10 +75,8 @@ class ChanStorage:
             ctx.state = ChanState.HANDSHAKED
             print(f"[hsh] successfully handshaked with {token} (as responder)")
 
-            # Отправляем ответ инициатору
             ncli.message(token, json.dumps({"type": "hs_resp", "data": resp_msg}))
 
-        # Инициатор получает ответное сообщение
         elif (
             msg_type == "hs_resp"
             and ctx.side == 0
@@ -142,10 +135,10 @@ def netthread(ctx: NetContext):
             if now >= ctx.ncli.next_discovery_time:
                 ctx.ncli.discovery()
             if now >= ctx.ncli.next_fetch_time:
-                ctx.ncli.fetch_msgs(0.5)
+                ctx.ncli.fetch_msgs(1)
 
         try:
-            pkt = ctx.ncli.wait_message(timeout=0)
+            pkt = ctx.ncli.wait_message(timeout=1)
         except Exception as ex:
             print(f"[client] interrupted ({ex}), exiting...")
             ctx.gui.force_exit()
@@ -154,17 +147,15 @@ def netthread(ctx: NetContext):
         if pkt:
             ctx.ncli.process_msg(pkt)
 
-        # 1. ОБРАБОТКА НОВЫХ ПИРОВ
         if ctx.ncli.has_new_peers():
             peers: list[int] = ctx.ncli.get_new_peers()
             for p in peers:
-                # Достаем публичный ключ пира (он сохранен в ncli при discovery)
+
                 peer_pub_b64 = ctx.ncli.known_pubkeys.get(p)
                 if peer_pub_b64:
                     ctx.chans.new_peer(p, peer_pub_b64, ctx.ncli)
                     ctx.inbox.put(("peer", (peer_pub_b64, p)))
 
-        # 2. ОБРАБОТКА ВХОДЯЩИХ СООБЩЕНИЙ
         if ctx.ncli.has_new_messages():
             msgs: dict[int, list[str]] = ctx.ncli.get_new_messages()
             for t, txts in msgs.items():
@@ -173,11 +164,9 @@ def netthread(ctx: NetContext):
                         msg_dict = json.loads(txt)
                         msg_type = msg_dict.get("type")
 
-                        # Если это этап хендшейка
                         if msg_type in ["hs_init", "hs_resp"]:
                             ctx.chans.process_hs_msg(t, msg_dict, ctx.ncli)
 
-                        # Если это текстовое сообщение (чат)
                         elif msg_type == "chat":
                             if ctx.chans.check(t):
                                 plain_text = ctx.chans.decrypt(t, msg_dict["data"])
@@ -194,15 +183,12 @@ def netthread(ctx: NetContext):
                     except Exception as ex:
                         print(f"[main] Crypto error processing message from {t}: {ex}")
 
-        # 3. ОТПРАВКА ИСХОДЯЩИХ СООБЩЕНИЙ ИЗ GUI
         while not ctx.outbox.empty():
             tkn, plain_msg = ctx.outbox.get_nowait()
 
             if ctx.chans.check(tkn):
-                # Зашифровываем
                 try:
                     enc_msg = ctx.chans.encrypt(tkn, plain_msg)
-                    # Оборачиваем в JSON "chat"
                     payload = json.dumps({"type": "chat", "data": enc_msg})
                     ctx.ncli.message(tkn, payload)
                     print(f"[main] Sent encrypted message to {tkn}")

@@ -9,17 +9,12 @@ Features:
 - Clean API for client/server roles
 """
 
-import base64
-import hmac
-import os
 import secrets
-from dataclasses import dataclass, field
-from typing import Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Optional
 
-from cryptography.exceptions import InvalidSignature, InvalidTag
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
@@ -105,18 +100,14 @@ class X25519Exchange:
         if self._completed:
             raise CryptoError("Exchange already completed")
 
-        # Load peer's public key
         peer_public = x25519.X25519PublicKey.from_public_bytes(peer_public_raw)
 
-        # Compute shared secret (32 bytes)
         shared = self._private.exchange(peer_public)
 
-        # Optional: add context to info for domain separation
         info = self._info
         if peer_context:
             info = info + b":" + peer_context
 
-        # Derive session keys via HKDF
         if salt is None:
             salt = secrets.token_bytes(16)
 
@@ -146,5 +137,4 @@ class X25519Exchange:
         )
 
     def get_public_key(self) -> Optional[bytes]:
-        """Return our ephemeral public key (raw bytes) or None."""
         return self._public

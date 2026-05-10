@@ -125,8 +125,9 @@ class GUIClient:
                 if mtype == "msg":
                     self._handle_incoming_network_msg(msg_data)
                 if mtype == "peer":
+                    print(msg_data)
                     name = sha256(f"{msg_data}".encode()).hexdigest()[2:7]
-                    self._add_contact(name, msg_data)
+                    self._add_contact(name, msg_data[1])
                     self.db.new_contact(name, msg_data[0], msg_data[1])
 
             except queue.Empty:
@@ -150,13 +151,14 @@ class GUIClient:
     def _card_click(self, token: int, name: str):
         self.current_contact = token
 
-        print(self.db.get_messages_from(token))
+        # print(self.db.get_messages_from(token))
         self._import_messages(name, self.db.get_messages_from(token) or [])
 
     def _import_contacts(self, contacts: list[tuple[int, str]]):
         for child in self.contacts_scroll.inner.winfo_children():
             child.destroy()
 
+        print(contacts)
         for token, name in contacts:
             card = ContactCard(
                 master=self.contacts_scroll.inner,

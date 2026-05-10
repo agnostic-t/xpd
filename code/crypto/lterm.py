@@ -41,11 +41,8 @@ class LongTermKey:
 
     @classmethod
     def generate(cls) -> "LongTermKey":
-        """Generate a new Ed25519 keypair."""
         private = ed25519.Ed25519PrivateKey.generate()
         return cls(private)
-
-    # ========== Export formats ==========
 
     def export_private_raw(self) -> bytes:
         """Export private key as 32 raw bytes (NOT encrypted)."""
@@ -104,7 +101,6 @@ class LongTermKey:
     def export_fingerprint(self, algorithm: str = "SHA256") -> str:
         """
         Calculate key fingerprint for verification.
-        Format: "ED25519:AA:BB:CC:..." (like SSH).
         """
         pub_raw = self.export_public_raw()
         if algorithm == "SHA256":
@@ -116,7 +112,6 @@ class LongTermKey:
         else:
             raise KeyManagementError(f"Unsupported fingerprint algorithm: {algorithm}")
 
-    # ========== Import formats ==========
 
     @classmethod
     def from_private_raw(cls, raw_bytes: bytes) -> "LongTermKey":
@@ -149,7 +144,7 @@ class LongTermKey:
             pem_ PEM-encoded key (private or public)
             password: If private key is encrypted
         """
-        # Try private key first
+
         try:
             private = serialization.load_pem_private_key(
                 pem_data,
@@ -161,7 +156,6 @@ class LongTermKey:
         except (ValueError, TypeError, UnsupportedAlgorithm):
             pass
 
-        # Try public key
         try:
             public = serialization.load_pem_public_key(pem_data)
             if not isinstance(public, ed25519.Ed25519PublicKey):
@@ -176,7 +170,7 @@ class LongTermKey:
     @classmethod
     def from_base64(cls, b64_key: str, is_private: bool) -> "LongTermKey":
         """Import key from base64-encoded raw bytes."""
-        # Add padding if needed
+
         padded = b64_key + "=" * (-len(b64_key) % 4)
         raw = base64.urlsafe_b64decode(padded)
 
@@ -184,8 +178,6 @@ class LongTermKey:
             return cls.from_private_raw(raw)
         else:
             return cls.from_public_raw(raw)
-
-    # ========== File I/O with security ==========
 
     def save_to_file(
         self,
@@ -203,20 +195,16 @@ class LongTermKey:
         """
         path_obj = Path(path)
 
-        # Ensure parent directory exists and is secure
         path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        # Export and write
         pem_data = self.export_private_pem(password)
 
-        # Write with secure permissions
         fd = os.open(str(path_obj), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
         try:
             os.write(fd, pem_data)
         finally:
             os.close(fd)
 
-        # Double-check permissions (in case umask interfered)
         os.chmod(str(path_obj), mode)
 
     @classmethod
@@ -230,9 +218,8 @@ class LongTermKey:
         if not path_obj.is_file():
             raise KeyManagementError(f"Key file not found: {path}")
 
-        # Check permissions (warn if too open)
         stat = path_obj.stat()
-        if stat.st_mode & 0o077:  # Any permissions for group/other
+        if stat.st_mode & 0o077:
             import warnings
 
             warnings.warn(
@@ -243,8 +230,6 @@ class LongTermKey:
 
         pem_data = path_obj.read_bytes()
         return cls.from_pem(pem_data, password)
-
-    # ========== Properties ==========
 
     @property
     def has_private(self) -> bool:
