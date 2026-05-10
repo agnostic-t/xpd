@@ -10,7 +10,7 @@ SERVER_PORT = 9000
 script = """
 set -e
 git clone https://github.com/agnostic-t/xpd.git
-cd xpy-msg
+cd xpd
 python -m venv venv
 source ./venv/bin/activate
 pip install -r ./requirements
