@@ -13,6 +13,9 @@ from gui.exp_input import ExpandingInput
 from gui.frame import ScrollableFrame
 from gui.msg_bubble import MessageBubble
 
+import base64
+from tkinter import filedialog
+
 
 class GUIClient:
     def __init__(
@@ -86,15 +89,30 @@ class GUIClient:
         )
         self.chat_name.pack(side="top", fill="x")
 
+        self.input_frame = ttk.Frame(master=self.chat)
+        self.input_frame.pack(side="bottom", fill="x", pady=(10, 0))
+
+        # Кнопка прикрепления изображения
+        self.attach_btn = tk.Button(
+            master=self.input_frame,
+            text="📎",
+            font=("Arial", 16),
+            bd=0,
+            cursor="hand2",
+            command=self._handle_send_image
+            )
+        self.attach_btn.pack(side="left", padx=(0, 10), fill="y")
+
+        # Поле ввода текста
         self.msg_label = ExpandingInput(
-            master=self.chat,
+            master=self.input_frame,
             placeholder="Enter message...",
             font=self.sfont,
             min_height=1,
             max_height=6,
             on_send=self._handle_send,
         )
-        self.msg_label.pack(side="bottom", fill="x", pady=(10, 0))
+        self.msg_label.pack(side="left", fill="x", expand=True)
 
         self.chat_scroll = ScrollableFrame(master=self.chat, padding=(0, 10))
         ttk.Label(
@@ -158,7 +176,6 @@ class GUIClient:
         for child in self.contacts_scroll.inner.winfo_children():
             child.destroy()
 
-        print(contacts)
         for token, name in contacts:
             card = ContactCard(
                 master=self.contacts_scroll.inner,
@@ -186,9 +203,15 @@ class GUIClient:
             bg = "#0084ff" if is_outgoing else "#e5e5ea"
             fg = "#fff" if is_outgoing else "#000"
 
-            msg_b = MessageBubble(
-                self.chat_scroll.inner, text, max_w, style="system", bg=bg, fg=fg
-            )
+            if text.startswith("IMG:"):
+                b64_data = text[4:]
+                msg_b = MessageBubble(
+                    self.chat_scroll.inner, image_b64=b64_data, max_width=max_w, style="system", bg=bg, fg=fg
+                )
+            else:
+                msg_b = MessageBubble(
+                    self.chat_scroll.inner, text=text, max_width=max_w, style="system", bg=bg, fg=fg
+                )
             if is_outgoing:
                 msg_b.pack(anchor="e", pady=3, padx=10)
             else:
@@ -219,9 +242,17 @@ class GUIClient:
         bg = "#0084ff" if is_outgoing else "#e5e5ea"
         fg = "#fff" if is_outgoing else "#000"
 
-        msg_b = MessageBubble(
-            self.chat_scroll.inner, text, max_w, style="system", bg=bg, fg=fg
-        )
+        # Проверяем, является ли это изображением
+        if text.startswith("IMG:"):
+            b64_data = text[4:]
+            msg_b = MessageBubble(
+                self.chat_scroll.inner, image_b64=b64_data, max_width=max_w, style="system", bg=bg, fg=fg
+            )
+        else:
+            msg_b = MessageBubble(
+                self.chat_scroll.inner, text=text, max_width=max_w, style="system", bg=bg, fg=fg
+            )
+
         if is_outgoing:
             msg_b.pack(anchor="e", pady=3, padx=10)
         else:
@@ -229,10 +260,9 @@ class GUIClient:
 
         self.chat_scroll._on_inner_configure(None)
 
-        msg_data = (self.current_contact, text)  # , int(time()), True
+        msg_data = (self.current_contact, text)
         if is_outgoing:
             self.outbox.put(msg_data)
-        # self.chat_scroll._stick_to_bottom()
 
     def _scroll_to_bottom(self):
         self.chat_scroll.canvas.yview_moveto(1.0)
@@ -248,9 +278,32 @@ class GUIClient:
             print("[SEND] failed:", msg)
 
         self._add_message(text, True)
-        # self._import_messages(
-        #     self.current_chat_name, self.db.get_messages_from(self.current_contact)
-        # )
+
+    def _handle_send_image(self):
+        if self.current_contact == -1:
+            print("[SEND] cannot send image (current contact is -1)")
+            return
+
+        filepath = filedialog.askopenfilename(
+            title="Choose image",
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif")]
+        )
+
+        if filepath:
+            try:
+                with open(filepath, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+
+                img_msg = f"IMG:{encoded_string}"
+
+                status, msg = self.db.new_message(self.current_contact, int(time()), img_msg, True)
+                if not status:
+                    print("[SEND IMAGE] ошибка сохранения в БД:", msg)
+
+                self._add_message(img_msg, True)
+
+            except Exception as e:
+                print(f"[SEND] Failed to send image {e}")
 
     def run(self):
         self.root.mainloop()

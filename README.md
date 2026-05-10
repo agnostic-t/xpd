@@ -1,31 +1,27 @@
-# Школьный проект децентрализованного мессенджера
+# Simple Messenger
 
-## Состав
+- Decentralized, but not P2P
+- Has AES encryption
+- ED25519 for client authorization
+- X25519 for ephemeral keys
+- Has Perferct Forward Secrecy
+- Uses TCP as transport
 
-Состоит из 3 главных частей:
+## Installation and Usage
 
-1) GUI ядро
+```sh
+pip install -r ./requirements
+cd code
+python ./main -i SERVER_IP -p SERVER_PORT # For GUI client
+python ./server -i BIND_IP -p BIND_PORT # For server
+```
 
-- Tkinter модуль, предоставляет GUI интерфейс для мессенджера
+You can also run a distributor and install client via `curl`
 
-2) NET ядро
+```sh
+cd code
+python ./distributor.py
 
-- Содержит абстракцию над `socket.socket` с TCP/IP стеком
-- Сервер для связи клиентов между друг другом
-- Клиент для связи с сервером и отправки сообщений другим клиентам
-- Вспомогательный файл с адресацией
+# Installation
 
-3) Crypto ядро
-
-- Обертка над библиотекой `rsa` для предоставления:
-  - Подписи сообщений
-  - Зашифровки сообщений
-  - Расшифровки сообщений
-
-## Принцип децентрализации
-
-Каждый клиент может переслыать сообщения даже тем клиентам, которые не подключены прямо к серверу, к которому подключен данный клиент.
-
-Достигается это через связь разных серверов между друг другом, они пересылают друг другу список известных клиентов в виде хеш-таблицы и позволяют клиентам видеть друг друга.
-
-При отправке сообщений клиенту с другого сервера ...
+```

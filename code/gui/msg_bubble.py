@@ -1,12 +1,16 @@
 import math
 import tkinter as tk
+import base64
+import io
+from PIL import Image, ImageTk
 
 class MessageBubble(tk.Frame):
     def __init__(
         self,
         master,
-        text: str,
-        max_width: int,
+        text: str = "",
+        image_b64: str | None = None,
+        max_width: int = 300,
         style: str = "incoming",  # "incoming", "outgoing", "system"
         radius: int = 10,
         bg: str = "#0084ff",
@@ -30,15 +34,38 @@ class MessageBubble(tk.Frame):
         self.canvas = tk.Canvas(self, highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
 
-        self.lbl = tk.Label(
-            self.canvas,
-            text=text,
-            bg=bg,
-            fg=fg,
-            wraplength=max_width,
-            justify="left",
-            font=("Arial", 13),
-        )
+        self._photo_image = None
+
+        if image_b64:
+            img_data = base64.b64decode(image_b64)
+            img = Image.open(io.BytesIO(img_data))
+
+            if img.width > max_width:
+                ratio = max_width / img.width
+                new_size = (max_width, int(img.height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+            self._photo_image = ImageTk.PhotoImage(img)
+
+            # Размещаем картинку в Label
+            self.lbl = tk.Label(
+                self.canvas,
+                image=self._photo_image,
+                bg=bg,
+                bd=0
+            )
+        else:
+            # Размещаем обычный текст
+            self.lbl = tk.Label(
+                self.canvas,
+                text=text,
+                bg=bg,
+                fg=fg,
+                wraplength=max_width,
+                justify="left",
+                font=("Arial", 13),
+            )
+
         self.lbl_window = self.canvas.create_window(0, 0, window=self.lbl, anchor="nw")
 
         self.lbl.bind("<Configure>", self._resize)
@@ -58,7 +85,7 @@ class MessageBubble(tk.Frame):
         self.canvas.delete("bg")
         r = min(self.radius, w / 2, h / 2)
         c = self.corners
-        pts = []
+        pts =[]
         steps = 24
 
         def add_arc(cx, cy, start_ang, end_ang):
@@ -78,6 +105,6 @@ class MessageBubble(tk.Frame):
         if c[3]: add_arc(r, h - r, 90, 180)
         else: pts.append((0, h))
 
-        flat_pts = [round(v, 1) for p in pts for v in p]
+        flat_pts =[round(v, 1) for p in pts for v in p]
 
         self.canvas.create_polygon(flat_pts, fill=self.bg, outline="", smooth=True)
