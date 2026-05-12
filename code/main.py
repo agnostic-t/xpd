@@ -138,6 +138,10 @@ def netthread(ctx: NetContext):
                 lt = [t for _, t in ctx.ncli.last_discovery.copy()]
 
                 for p in ctx.gui.contacts_exists:
+                    if p not in ctx.gui.cards:
+                        print(f"[main] skipping {p}, no such token in cards")
+                        continue
+
                     if ctx.gui.cards[p].is_online != p in lt:
                         print(f"[stats] {p} turned {"online" if p in lt else "offline"}")
                         ctx.gui.cards[p].is_online = p in lt

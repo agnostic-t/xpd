@@ -181,7 +181,7 @@ class GUIClient:
         for token, name in contacts:
             card = ContactCard(
                 master=self.contacts_scroll.inner,
-                token=token,
+                token=int(token),
                 name=name,
                 initial=name[0] if name else "?",
                 bg_normal="#fff",
@@ -189,8 +189,10 @@ class GUIClient:
                 command=self._card_click,
             )
             card.pack(fill="x", padx=8, pady=4)
-            self.contacts_exists.add(token)
-            self.cards[token] = card
+            self.contacts_exists.add(int(token))
+            self.cards[int(token)] = card
+
+
 
         self.contacts_scroll._on_inner_configure(None)
 
@@ -226,6 +228,7 @@ class GUIClient:
         # self.chat_scroll._stick_to_bottom()
 
     def _add_contact(self, name: str, token: int):
+        print("add:", token, self.contacts_exists)
         if token in self.contacts_exists:
             return
 
