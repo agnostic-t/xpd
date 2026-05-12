@@ -135,10 +135,16 @@ def netthread(ctx: NetContext):
         if ctx.ncli.state == client.ClientStates.REGISTERED:
             if now >= ctx.ncli.next_discovery_time:
                 ctx.ncli.discovery()
-                lt = [t for _, t in ctx.ncli.last_discovery]
+                lt = [t for _, t in ctx.ncli.last_discovery.copy()]
 
                 for p in ctx.gui.contacts_exists:
+                    if ctx.gui.cards[p].is_online != p in lt:
+                        print(f"[stats] {p} turned {"online" if p in lt else "offline"}")
+                        ctx.gui.cards[p].is_online = p in lt
+
                     ctx.gui.set_contact_online(token=p, is_online=p in lt)
+
+                ctx.ncli.last_discovery = []
 
             if now >= ctx.ncli.next_fetch_time:
                 ctx.ncli.fetch_msgs(1)

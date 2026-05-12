@@ -202,7 +202,8 @@ class DecClient:
                     if t != self.token and t not in self.known_peers
                 ]
 
-                self.last_discovery = tokens
+                print(tokens)
+                self.last_discovery = tokens.copy()
 
                 if len(new_peers) > 0:
                     for pkey, t in new_peers:

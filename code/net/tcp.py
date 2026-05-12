@@ -38,6 +38,9 @@ class TCPSocket:
             return None
 
         to_recv = int.from_bytes(length_prefix, byteorder="big")
+        if to_recv > 1024 * 1024 * 5:
+            print(f"[tcp][warning] message is too big: {to_recv} bytes")
+            return None
 
         return self._recvall(to_recv)
 

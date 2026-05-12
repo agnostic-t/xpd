@@ -47,7 +47,6 @@ class MessageBubble(tk.Frame):
 
             self._photo_image = ImageTk.PhotoImage(img)
 
-            # Размещаем картинку в Label
             self.lbl = tk.Label(
                 self.canvas,
                 image=self._photo_image,
@@ -55,7 +54,6 @@ class MessageBubble(tk.Frame):
                 bd=0
             )
         else:
-            # Размещаем обычный текст
             self.lbl = tk.Label(
                 self.canvas,
                 text=text,
