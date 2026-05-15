@@ -15,7 +15,7 @@ class Client:
     address: address.NetAddress
     connection: socket.socket
     tcpsock: tcp.TCPSocket
-    pubkey: str  # ИЗМЕНЕНИЕ: Сюда будем сохранять публичный ключ при коннекте
+    pubkey: str
     is_server: bool = False
 
 
@@ -32,7 +32,6 @@ class DecServer:
         self.remote_tokens: dict[int, Client] = {}
         self.forwarded_msgs: dict[int, list[pck.Packet]] = {}
 
-        # ИЗМЕНЕНИЕ: Хранилище публичных ключей для всех известных токенов
         self.token_pubkeys: dict[int, str] = {}
 
         self.ltk: LongTermKey = ltk
@@ -168,7 +167,7 @@ class DecServer:
             print(f"[serv][suggest] failed to connect to peer server: {ex}")
 
     def _send_server_hello(self, peer_cli: Client, is_ack: bool):
-        # ИЗМЕНЕНИЕ: Отправляем не просто список токенов, а словарь {token: pubkey}
+
         known_tokens = list(self.tokenized.keys()) + list(self.remote_tokens.keys())
         tokens_dict = {
             t: self.token_pubkeys[t] for t in known_tokens if t in self.token_pubkeys
@@ -197,7 +196,7 @@ class DecServer:
     def _update_remote_tokens(self, pack: pck.Packet, cli: Client):
         try:
             data = json.loads(pack.text)
-            new_tokens_dict = data.get("tokens", {})  # Теперь тут {str(token): pubkey}
+            new_tokens_dict = data.get("tokens", {})
             added_tokens = []
 
             for str_t, pubkey in new_tokens_dict.items():
@@ -217,7 +216,7 @@ class DecServer:
     ):
         if not tokens:
             return
-        # ИЗМЕНЕНИЕ: Рассылаем словарь токен->публичный ключ
+
         tokens_dict = {
             t: self.token_pubkeys[t] for t in tokens if t in self.token_pubkeys
         }
@@ -245,8 +244,7 @@ class DecServer:
             )
         else:
             self.tokenized[token] = cli
-            # При регистрации пакет верифицируется в _iter.
-            # Значит pack.text гарантированно является публичным ключом клиента, отправившего пакет.
+
             self.token_pubkeys[token] = cli.pubkey
 
             self._message(
@@ -255,14 +253,14 @@ class DecServer:
                     from_token=0,
                     to_token=token,
                     metadata="SERVER_REG_SUCCESS",
-                    text=self.ltk.export_public_base64(),  # Сервер отдает СВОЙ публичный ключ
+                    text=self.ltk.export_public_base64(),
                 ),
             )
             self._broadcast_tokens_update([token])
 
     def _process_discovery(self, pack: pck.Packet, cli: Client):
         all_known = list(self.tokenized.keys()) + list(self.remote_tokens.keys())
-        # ИЗМЕНЕНИЕ: Отвечаем форматом, который ждет клиент (список списков [pubkey, token])
+
         tokens_list = [
             [self.token_pubkeys[t], t] for t in all_known if t in self.token_pubkeys
         ]
@@ -282,9 +280,7 @@ class DecServer:
             self.forwarded_msgs.setdefault(pack.to_token, []).append(pack)
         elif pack.to_token in self.remote_tokens:
             peer_server_cli = self.remote_tokens[pack.to_token]
-            self._message(
-                peer_server_cli, pack, sign=False
-            )  # Не подписываем транзитные пакеты
+            self._message(peer_server_cli, pack, sign=False)
 
     def _get_msgs_for_peer(self, pack: pck.Packet, cli: Client):
         if (
@@ -306,7 +302,7 @@ class DecServer:
         )
 
     def _message(self, cli: Client, msg: pck.Packet, sign: bool = True):
-        # ИЗМЕНЕНИЕ: Автоматически подписываем пакеты от лица сервера (from_token=0)
+
         if sign and msg.from_token == 0:
             msg.sign(self.ltk.export_private_hazmat())
         cli.tcpsock.sendx(json.dumps(msg.serial(), ensure_ascii=False).encode())
@@ -328,26 +324,21 @@ class DecServer:
             print(f"[serv][iter] error: {ex}")
             return
 
-        # ==========================================
-        # БАРЬЕР БЕЗОПАСНОСТИ: ПРОВЕРКА ПОДПИСЕЙ
-        # ==========================================
         is_valid = False
 
         if packet.metadata in ["SERVER_HELLO", "SERVER_HELLO_ACK"]:
             peer_pubkey = json.loads(packet.text).get("pubkey")
             is_valid = packet.verify(peer_pubkey)
             if is_valid:
-                cli.pubkey = peer_pubkey  # Сохраняем ключ peer-сервера
+                cli.pubkey = peer_pubkey
 
         elif packet.metadata == "REGISTER":
-            # Клиент заявляет свой pubkey в тексте
             client_pubkey = packet.text
             is_valid = packet.verify(client_pubkey)
             if is_valid:
                 cli.pubkey = client_pubkey
 
         elif packet.metadata == "MESSAGE":
-            # Сквозная верификация: проверяем по ключу ОТПРАВИТЕЛЯ
             sender_pub = self.token_pubkeys.get(packet.from_token)
             if sender_pub:
                 is_valid = packet.verify(sender_pub)
@@ -355,15 +346,12 @@ class DecServer:
                 print(f"[security] DROP: unknown sender pubkey for {packet.from_token}")
 
         else:
-            # Для всего остального (DISCOVERY, FETCH, SUGGEST...)
-            # мы используем публичный ключ, закрепленный за соединением (cli.pubkey)
             if cli.pubkey:
                 is_valid = packet.verify(cli.pubkey)
 
         if not is_valid:
             print(f"[serv][security] DROP: Invalid signature for {packet.metadata}")
             return
-        # ==========================================
 
         match packet.metadata:
             case "SERVER_HELLO":

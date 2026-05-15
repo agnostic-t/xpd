@@ -1,3 +1,4 @@
+import base64
 import queue
 import threading
 import tkinter as tk
@@ -5,6 +6,7 @@ import tkinter.font as tkFont
 import tkinter.ttk as ttk
 from hashlib import sha256
 from time import time
+from tkinter import filedialog
 
 from db.chat import ChatDatabase
 
@@ -12,9 +14,6 @@ from gui.cli_card import ContactCard
 from gui.exp_input import ExpandingInput
 from gui.frame import ScrollableFrame
 from gui.msg_bubble import MessageBubble
-
-import base64
-from tkinter import filedialog
 
 
 class GUIClient:
@@ -24,7 +23,6 @@ class GUIClient:
         self.root = tk.Tk()
         self.root.title("XTCli")
         self.root.geometry(f"{geo[0]}x{geo[1]}")
-        # self.root.resizable(False, False)
 
         self.inbox = queue.Queue()
         self.outbox = queue.Queue()
@@ -95,18 +93,16 @@ class GUIClient:
         self.input_frame = ttk.Frame(master=self.chat)
         self.input_frame.pack(side="bottom", fill="x", pady=(10, 0))
 
-        # Кнопка прикрепления изображения
         self.attach_btn = tk.Button(
             master=self.input_frame,
             text="📎",
             font=("Arial", 16),
             bd=0,
             cursor="hand2",
-            command=self._handle_send_image
-            )
+            command=self._handle_send_image,
+        )
         self.attach_btn.pack(side="left", padx=(0, 10), fill="y")
 
-        # Поле ввода текста
         self.msg_label = ExpandingInput(
             master=self.input_frame,
             placeholder="Enter message...",
@@ -171,7 +167,6 @@ class GUIClient:
     def _card_click(self, token: int, name: str):
         self.current_contact = token
 
-        # print(self.db.get_messages_from(token))
         self._import_messages(name, self.db.get_messages_from(token) or [])
 
     def _import_contacts(self, contacts: list[tuple[int, str]]):
@@ -192,8 +187,6 @@ class GUIClient:
             self.contacts_exists.add(int(token))
             self.cards[int(token)] = card
 
-
-
         self.contacts_scroll._on_inner_configure(None)
 
     def _import_messages(self, with_whom: str, messages: list[tuple[int, bool, str]]):
@@ -212,11 +205,21 @@ class GUIClient:
             if text.startswith("IMG:"):
                 b64_data = text[4:]
                 msg_b = MessageBubble(
-                    self.chat_scroll.inner, image_b64=b64_data, max_width=max_w, style="system", bg=bg, fg=fg
+                    self.chat_scroll.inner,
+                    image_b64=b64_data,
+                    max_width=max_w,
+                    style="system",
+                    bg=bg,
+                    fg=fg,
                 )
             else:
                 msg_b = MessageBubble(
-                    self.chat_scroll.inner, text=text, max_width=max_w, style="system", bg=bg, fg=fg
+                    self.chat_scroll.inner,
+                    text=text,
+                    max_width=max_w,
+                    style="system",
+                    bg=bg,
+                    fg=fg,
                 )
             if is_outgoing:
                 msg_b.pack(anchor="e", pady=3, padx=10)
@@ -225,7 +228,6 @@ class GUIClient:
 
         self.chat_scroll._on_inner_configure(None)
         self._scroll_to_bottom()
-        # self.chat_scroll._stick_to_bottom()
 
     def _add_contact(self, name: str, token: int):
         print("add:", token, self.contacts_exists)
@@ -263,11 +265,21 @@ class GUIClient:
         if text.startswith("IMG:"):
             b64_data = text[4:]
             msg_b = MessageBubble(
-                self.chat_scroll.inner, image_b64=b64_data, max_width=max_w, style="system", bg=bg, fg=fg
+                self.chat_scroll.inner,
+                image_b64=b64_data,
+                max_width=max_w,
+                style="system",
+                bg=bg,
+                fg=fg,
             )
         else:
             msg_b = MessageBubble(
-                self.chat_scroll.inner, text=text, max_width=max_w, style="system", bg=bg, fg=fg
+                self.chat_scroll.inner,
+                text=text,
+                max_width=max_w,
+                style="system",
+                bg=bg,
+                fg=fg,
             )
 
         if is_outgoing:
@@ -306,17 +318,19 @@ class GUIClient:
 
         filepath = filedialog.askopenfilename(
             title="Choose image",
-            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif")]
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif")],
         )
 
         if filepath:
             try:
                 with open(filepath, "rb") as image_file:
-                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                    encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
 
                 img_msg = f"IMG:{encoded_string}"
 
-                status, msg = self.db.new_message(self.current_contact, int(time()), img_msg, True)
+                status, msg = self.db.new_message(
+                    self.current_contact, int(time()), img_msg, True
+                )
                 if not status:
                     print("[SEND IMAGE] ошибка сохранения в БД:", msg)
 

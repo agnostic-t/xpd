@@ -1,5 +1,4 @@
 import argparse
-from hashlib import sha256
 import json
 import os
 import queue
@@ -7,6 +6,7 @@ import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
+from hashlib import sha256
 from pathlib import Path
 
 import db.chat as chd
@@ -142,10 +142,6 @@ def netthread(ctx: NetContext):
                         print(f"[main] skipping {p}, no such token in cards")
                         continue
 
-                    if ctx.gui.cards[p].is_online != p in lt:
-                        print(f"[stats] {p} turned {"online" if p in lt else "offline"}")
-                        ctx.gui.cards[p].is_online = p in lt
-
                     ctx.gui.set_contact_online(token=p, is_online=p in lt)
 
                 ctx.ncli.last_discovery = []
@@ -166,7 +162,6 @@ def netthread(ctx: NetContext):
         if ctx.ncli.has_new_peers():
             peers: list[int] = ctx.ncli.get_new_peers()
             for p in peers:
-
                 peer_pub_b64 = ctx.ncli.known_pubkeys.get(p)
                 if peer_pub_b64:
                     ctx.chans.new_peer(p, peer_pub_b64, ctx.ncli)
